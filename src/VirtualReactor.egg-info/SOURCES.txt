@@ -1,0 +1,10 @@
+pyproject.toml
+src/VirtualReactor.egg-info/PKG-INFO
+src/VirtualReactor.egg-info/SOURCES.txt
+src/VirtualReactor.egg-info/dependency_links.txt
+src/VirtualReactor.egg-info/requires.txt
+src/VirtualReactor.egg-info/top_level.txt
+src/VR/__init__.py
+src/VR/kinetics.py
+src/VR/reactor.py
+src/VR/simulation.py
