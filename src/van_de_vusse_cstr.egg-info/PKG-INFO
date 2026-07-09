@@ -1,0 +1,11 @@
+Metadata-Version: 2.4
+Name: van-de-vusse-cstr
+Version: 0.1.0
+Summary: A Python package for modeling the Van de Vusse reaction in chemical reactors.
+Author: Eric Liberra
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+Requires-Dist: numpy
+Requires-Dist: scipy
+Requires-Dist: matplotlib
+Requires-Dist: pandas

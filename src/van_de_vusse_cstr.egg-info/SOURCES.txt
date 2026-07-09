@@ -1,0 +1,10 @@
+pyproject.toml
+src/van_de_vusse_cstr.egg-info/PKG-INFO
+src/van_de_vusse_cstr.egg-info/SOURCES.txt
+src/van_de_vusse_cstr.egg-info/dependency_links.txt
+src/van_de_vusse_cstr.egg-info/requires.txt
+src/van_de_vusse_cstr.egg-info/top_level.txt
+src/vdv/__init__.py
+src/vdv/kinetics.py
+src/vdv/reactor.py
+src/vdv/simulation.py
