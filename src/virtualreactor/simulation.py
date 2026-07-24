@@ -15,38 +15,106 @@ class Simulation:
         self.reactor = reactor
         self.properties=properties
 
-    def rhs(self, time, state):
-        """Return the complete time derivative of the state vector."""
+    def rhs(self, xi, state):
+        """Evaluate the governing reactor equations.
+
+        The state derivative is computed as
+
+            dy/dξ = T_reactor(s_chemical) + s_reactor
+
+        where
+
+            s_chemical = [
+                species contribution,
+                temperature contribution,
+                pressure contribution,
+            ]
+
+        ξ denotes the independent variable:
+
+            ξ = t    for transient reactors (Batch, CSTR)
+            ξ = V    for steady plug-flow reactors.
+        """
+        chemical_state, reactor_context = (
+            self.reactor.chemical_state(
+                state=state,
+                properties=self.properties,
+            )
+        )
+
         n_species = len(self.mechanism.species)
 
-        concentrations = state[:n_species]
-        temperature = state[n_species]
-        pressure = state[n_species + 1]
+        concentrations = chemical_state[:n_species]
+        temperature = chemical_state[n_species]
+        pressure = chemical_state[n_species + 1]
 
-        density, heat_capacity = self.properties.evaluate(
-            concentrations,
-            temperature,
-            pressure,
-        )
+        density = reactor_context["density"]
+        heat_capacity = reactor_context["heat_capacity"]
 
-        mechanism_term = self.mechanism.derivative_contribution(
-            state=state,
+        chemical_contribution = self.mechanism.chemical_contribution(
+            state=chemical_state,
             density=density,
             heat_capacity=heat_capacity,
         )
 
-        reactor_term = self.reactor.derivative_contribution(
-            state=state,
-            density=density,
-            heat_capacity=heat_capacity,
+        transformed_chemical_contribution = (
+            self.reactor.transformation_operator(
+                chemical_contribution=chemical_contribution,
+                context=reactor_context,
+            )
         )
 
-        return mechanism_term + reactor_term
+        reactor_contribution = self.reactor.derivative_contribution(
+            xi=xi,
+            state=state,
+            context=reactor_context,
+        )
+
+        return (
+            transformed_chemical_contribution
+            + reactor_contribution
+        )
+        # n_species = len(self.mechanism.species)
+
+        # concentrations = state[:n_species]
+        # temperature = state[n_species]
+        # pressure = state[n_species + 1]
+
+        # density, heat_capacity = self.properties.evaluate(
+        #     concentrations,
+        #     temperature,
+        #     pressure,
+        # )
+
+        # chemical_contribution = self.mechanism.chemical_contribution(
+        #     state=state,
+        #     density=density,
+        #     heat_capacity=heat_capacity,
+        # )
+
+        # transformed_chemical_contribution = (
+        #     self.reactor.transformation_operator(
+        #         chemical_contribution
+        #     )
+        # )
+
+        # reactor_contribution = self.reactor.derivative_contribution(
+        #     state=state,
+        #     density=density,
+        #     heat_capacity=heat_capacity,
+        # )
+
+        # state_derivative = (
+        #     transformed_chemical_contribution
+        #     + reactor_contribution
+        # )
+
+        # return state_derivative
 
     def solve(
         self,
         initial_state,
-        time_span,
+        xi_span,
         evaluation_times=None,
         method="BDF",
         relative_tolerance=1e-6,
@@ -57,7 +125,7 @@ class Simulation:
 
         solution = solve_ivp(
             fun=self.rhs,
-            t_span=time_span,
+            t_span=xi_span,
             y0=initial_state,
             t_eval=evaluation_times,
             method=method,
