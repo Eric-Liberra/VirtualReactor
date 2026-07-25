@@ -115,6 +115,9 @@ class PlugFlowReactor:
     def __init__(
         self,
         molar_masses,
+        jacket_temperature=None,
+        overall_heat_transfer_coefficient=0.0,
+        heat_transfer_area_per_volume=0.0,
     ):
         self.molar_masses = np.asarray(
             molar_masses,
@@ -154,19 +157,19 @@ class PlugFlowReactor:
         temperature = state[n_species]
         pressure = state[n_species + 1]
 
-        if np.any(molar_flows < 0):
-            raise ValueError(
-                "Molar flows must not be negative."
-            )
+        # if np.any(molar_flows < 0):
+        #     raise ValueError(
+        #         "Molar flows must not be negative."
+        #     )
 
         total_molar_flow = np.sum(
             molar_flows
         )
 
-        if total_molar_flow <= 0:
-            raise ValueError(
-                "Total molar flow must be positive."
-            )
+        # if total_molar_flow <= 0:
+        #     raise ValueError(
+        #         "Total molar flow must be positive."
+        #     )
 
         mole_fractions = (
             molar_flows
@@ -256,7 +259,118 @@ class PlugFlowReactor:
         context,
     ):
         """Return non-chemical PFR contributions."""
-        return np.zeros_like(
+        state = np.asarray(
             state,
             dtype=float,
+        )
+
+        derivative = np.zeros_like(
+            state,
+            dtype=float,
+        )
+
+        n_species = len(self.molar_masses)
+        temperature = state[n_species]
+
+        mass_flow = context[
+            "mass_flow"
+        ]
+
+        heat_capacity = context[
+            "heat_capacity"
+        ]
+
+        if mass_flow <= 0:
+            raise ValueError(
+                "mass_flow must be positive."
+            )
+
+        if heat_capacity <= 0:
+            raise ValueError(
+                "heat_capacity must be positive."
+            )
+
+        external_heat_source = (
+            self.heat_transfer_source(
+                temperature=temperature,
+            )
+        )
+
+        derivative[n_species] = (
+            external_heat_source
+            / (
+                mass_flow
+                * heat_capacity
+            )
+        )
+
+        return derivative
+
+    def heat_transfer_source(
+        self,
+        temperature,
+    ):
+        """
+        Return the external volumetric heat source.
+
+        Positive values heat the reactor.
+        Negative values cool the reactor.
+
+        Returns
+        -------
+        float
+            Volumetric heat source in W m^-3.
+        """
+        if self.jacket_temperature is None:
+            return 0.0
+
+        return (
+            self.overall_heat_transfer_coefficient
+            * self.heat_transfer_area_per_volume
+            * (
+                self.jacket_temperature
+                - temperature
+            )
+        )
+
+    @classmethod
+    def adiabatic(
+        cls,
+        molar_masses,
+    ):
+        """Create an adiabatic plug-flow reactor."""
+        return cls(
+            molar_masses=molar_masses,
+        )
+
+    @classmethod
+    def with_constant_jacket_temperature(
+        cls,
+        molar_masses,
+        jacket_temperature,
+        overall_heat_transfer_coefficient,
+        heat_transfer_area_per_volume,
+    ):
+        """Create a PFR with a constant jacket temperature."""
+        if overall_heat_transfer_coefficient <= 0:
+            raise ValueError(
+                "overall_heat_transfer_coefficient "
+                "must be positive for jacket heat transfer."
+            )
+
+        if heat_transfer_area_per_volume <= 0:
+            raise ValueError(
+                "heat_transfer_area_per_volume "
+                "must be positive for jacket heat transfer."
+            )
+
+        return cls(
+            molar_masses=molar_masses,
+            jacket_temperature=jacket_temperature,
+            overall_heat_transfer_coefficient=(
+                overall_heat_transfer_coefficient
+            ),
+            heat_transfer_area_per_volume=(
+                heat_transfer_area_per_volume
+            ),
         )
