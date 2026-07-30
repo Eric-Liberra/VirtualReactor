@@ -1,4 +1,5 @@
 import numpy as np
+from virtualreactor.units import to_magnitude, to_magnitude_array, ureg
 
 R_GAS_CONSTANT = 8.314462618  # J mol^-1 K^-1
 
@@ -67,25 +68,32 @@ class Mechanism:
             dtype=float,
         )
 
-        self.activation_energies = np.asarray(
+        self.activation_energies = to_magnitude_array(
             activation_energies,
-            dtype=float,
+            ureg.joule / ureg.mole,
+            "activation_energies",
         )
 
         if reaction_enthalpies is None:
             self.reaction_enthalpies = None
         else:
-            self.reaction_enthalpies = np.asarray(
+            self.reaction_enthalpies = to_magnitude_array(
                 reaction_enthalpies,
-                dtype=float,
+                ureg.joule / ureg.mole,
+                "reaction_enthalpies",
             )
 
         if reaction_entropies is None:
             self.reaction_entropies = None
         else:
-            self.reaction_entropies = np.asarray(
+            self.reaction_entropies = to_magnitude_array(
                 reaction_entropies,
-                dtype=float,
+                ureg.joule
+                / (
+                    ureg.mole
+                    * ureg.kelvin
+                ),
+                "reaction_entropies",
             )
 
         if reversible is None:

@@ -1,6 +1,5 @@
 import numpy as np
-
-import numpy as np
+from virtualreactor.units import to_magnitude, ureg
 
 
 class BatchReactor:
@@ -63,76 +62,121 @@ class BatchReactor:
             state,
             dtype=float,
         )
-# class BatchReactor:
-#     """Ideal closed batch reactor.
 
-#     The reactor contributes no inlet or outlet terms. In the simplest
-#     adiabatic and constant-volume formulation, all state changes originate
-#     from the reaction mechanism.
-#     """
-#     def derivative_contribution(
-#         self,
-#         state,
-#         density,
-#         heat_capacity,
-#     ):
-#         """Return the reactor contribution to the full state derivative."""
-#         state = np.asarray(state, dtype=float)
-
-#         if state.ndim != 1:
-#             raise ValueError("state must be a one-dimensional vector.")
-
-#         if density <= 0:
-#             raise ValueError("density must be positive.")
-
-#         if heat_capacity <= 0:
-#             raise ValueError("heat_capacity must be positive.")
-
-#         return np.zeros_like(state, dtype=float)
-
-#     def transformation_operator(
-#         self,
-#         chemical_contribution,
-#     ):
-#         """Return the unchanged chemical contribution vector.
-
-#         For a batch reactor, the reactor transformation operator is the
-#         identity:
-
-#             T_batch(s_chemical) = s_chemical
-#         """
-#         return np.asarray(
-#             chemical_contribution,
-#             dtype=float,
-#         )
-
-#     def __repr__(self):
-#         return "BatchReactor(mode='closed, adiabatic, constant-volume')"
 
 class PlugFlowReactor:
-    """Steady-state plug-flow reactor using molar flows."""
+    """Steady-state plug-flow reactor using molar flows.
+
+    The reactor state is
+
+        [F_1, ..., F_n, T, p]
+
+    where F_i are molar flows, T is temperature, and p is pressure.
+
+    All physical reactor parameters are converted to SI units during
+    initialization.
+    """
 
     def __init__(
         self,
-        molar_masses,
+        flow_model,
         jacket_temperature=None,
-        overall_heat_transfer_coefficient=0.0,
-        heat_transfer_area_per_volume=0.0,
+        overall_heat_transfer_coefficient=None,
+        heat_transfer_area_per_volume=None,
     ):
-        self.molar_masses = np.asarray(
-            molar_masses,
-            dtype=float,
+        if not hasattr(
+            flow_model,
+            "evaluate",
+        ):
+            raise TypeError(
+                "flow_model must provide an evaluate() method."
+            )
+
+        self.flow_model = flow_model
+
+        self.jacket_temperature = (
+            None
+            if jacket_temperature is None
+            else to_magnitude(
+                jacket_temperature,
+                ureg.kelvin,
+                "jacket_temperature",
+            )
         )
 
-        if self.molar_masses.ndim != 1:
+        self.overall_heat_transfer_coefficient = (
+            0.0
+            if overall_heat_transfer_coefficient is None
+            else to_magnitude(
+                overall_heat_transfer_coefficient,
+                ureg.watt
+                / (
+                    ureg.meter**2
+                    * ureg.kelvin
+                ),
+                "overall_heat_transfer_coefficient",
+            )
+        )
+
+        self.heat_transfer_area_per_volume = (
+            0.0
+            if heat_transfer_area_per_volume is None
+            else to_magnitude(
+                heat_transfer_area_per_volume,
+                1 / ureg.meter,
+                "heat_transfer_area_per_volume",
+            )
+        )
+
+        if (
+            self.jacket_temperature is not None
+            and self.jacket_temperature <= 0.0
+        ):
             raise ValueError(
-                "molar_masses must be one-dimensional."
+                "jacket_temperature must be positive."
             )
 
-        if np.any(self.molar_masses <= 0):
+        if self.overall_heat_transfer_coefficient < 0.0:
             raise ValueError(
-                "All molar masses must be positive."
+                "overall_heat_transfer_coefficient "
+                "must not be negative."
             )
+
+        if self.heat_transfer_area_per_volume < 0.0:
+            raise ValueError(
+                "heat_transfer_area_per_volume "
+                "must not be negative."
+            )
+
+        jacket_enabled = (
+            self.jacket_temperature is not None
+        )
+
+        heat_transfer_enabled = (
+            self.overall_heat_transfer_coefficient > 0.0
+            or self.heat_transfer_area_per_volume > 0.0
+        )
+
+        if jacket_enabled != heat_transfer_enabled:
+            raise ValueError(
+                "Jacket heat transfer requires "
+                "jacket_temperature, "
+                "overall_heat_transfer_coefficient, and "
+                "heat_transfer_area_per_volume."
+            )
+
+        if jacket_enabled:
+            if self.overall_heat_transfer_coefficient <= 0.0:
+                raise ValueError(
+                    "overall_heat_transfer_coefficient must be "
+                    "positive when jacket heat transfer is enabled."
+                )
+
+            if self.heat_transfer_area_per_volume <= 0.0:
+                raise ValueError(
+                    "heat_transfer_area_per_volume must be "
+                    "positive when jacket heat transfer is enabled."
+                )
 
     def chemical_state(
         self,
@@ -145,58 +189,52 @@ class PlugFlowReactor:
             dtype=float,
         )
 
-        n_species = len(self.molar_masses)
-        expected_length = n_species + 2
-
-        if state.shape != (expected_length,):
+        if state.ndim != 1:
             raise ValueError(
-                f"State must have length {expected_length}."
+                "state must be one-dimensional."
             )
+
+        if state.size < 3:
+            raise ValueError(
+                "state must contain at least one species, "
+                "temperature, and pressure."
+            )
+
+        n_species = state.size - 2
 
         molar_flows = state[:n_species]
         temperature = state[n_species]
         pressure = state[n_species + 1]
 
-        # if np.any(molar_flows < 0):
-        #     raise ValueError(
-        #         "Molar flows must not be negative."
-        #     )
-
-        total_molar_flow = np.sum(
-            molar_flows
+        volumetric_flow = self.flow_model.evaluate(
+            molar_flows=molar_flows,
+            temperature=temperature,
+            pressure=pressure,
         )
 
-        # if total_molar_flow <= 0:
-        #     raise ValueError(
-        #         "Total molar flow must be positive."
-        #     )
-
-        mole_fractions = (
-            molar_flows
-            / total_molar_flow
+        volumetric_flow = float(
+            volumetric_flow
         )
 
-        density, heat_capacity = (
-            properties.evaluate_from_composition(
-                mole_fractions,
-                temperature,
-                pressure,
+        if volumetric_flow <= 0.0:
+            raise ValueError(
+                "Calculated volumetric flow must be positive."
             )
-        )
-
-        mass_flow = np.dot(
-            molar_flows,
-            self.molar_masses,
-        )
-
-        volumetric_flow = (
-            mass_flow
-            / density
-        )
 
         concentrations = (
             molar_flows
             / volumetric_flow
+        )
+
+        density, heat_capacity = properties.evaluate(
+            concentrations=concentrations,
+            temperature=temperature,
+            pressure=pressure,
+        )
+
+        mass_flow = (
+            density
+            * volumetric_flow
         )
 
         chemical_state = np.concatenate(
@@ -214,7 +252,6 @@ class PlugFlowReactor:
             "heat_capacity": heat_capacity,
             "volumetric_flow": volumetric_flow,
             "mass_flow": mass_flow,
-            "mole_fractions": mole_fractions,
         }
 
         return chemical_state, context
@@ -236,18 +273,27 @@ class PlugFlowReactor:
             "volumetric_flow"
         ]
 
-        # Species:
-        #
-        #     dF_i/dV = R_i
-        #
-        # The species source terms remain unchanged.
+        if volumetric_flow <= 0.0:
+            raise ValueError(
+                "volumetric_flow must be positive."
+            )
 
-        # Temperature:
+        # Species balance:
         #
-        #     dT/dV = (dT/dt) / volumetric_flow
+        #     dF_i / dV = R_i
+        #
+        # R_i already has units of mol m^-3 s^-1,
+        # equivalent to (mol s^-1) / m^3.
+        #
+        # Therefore, the species contributions do not need
+        # to be transformed.
+
+        # Chemical temperature contribution:
+        #
+        #     dT / dV = (dT / dt) / volumetric_flow
         transformed[-2] /= volumetric_flow
 
-        # Chemistry does not directly determine the pressure gradient.
+        # Chemistry does not directly determine pressure loss.
         transformed[-1] = 0.0
 
         return transformed
@@ -269,7 +315,7 @@ class PlugFlowReactor:
             dtype=float,
         )
 
-        n_species = len(self.molar_masses)
+        n_species = state.size - 2
         temperature = state[n_species]
 
         mass_flow = context[
@@ -280,20 +326,18 @@ class PlugFlowReactor:
             "heat_capacity"
         ]
 
-        if mass_flow <= 0:
+        if mass_flow <= 0.0:
             raise ValueError(
                 "mass_flow must be positive."
             )
 
-        if heat_capacity <= 0:
+        if heat_capacity <= 0.0:
             raise ValueError(
                 "heat_capacity must be positive."
             )
 
-        external_heat_source = (
-            self.heat_transfer_source(
-                temperature=temperature,
-            )
+        external_heat_source = self.heat_transfer_source(
+            temperature=temperature,
         )
 
         derivative[n_species] = (
@@ -310,17 +354,7 @@ class PlugFlowReactor:
         self,
         temperature,
     ):
-        """
-        Return the external volumetric heat source.
-
-        Positive values heat the reactor.
-        Negative values cool the reactor.
-
-        Returns
-        -------
-        float
-            Volumetric heat source in W m^-3.
-        """
+        """Return the external volumetric heat source in W/m³."""
         if self.jacket_temperature is None:
             return 0.0
 
@@ -336,36 +370,24 @@ class PlugFlowReactor:
     @classmethod
     def adiabatic(
         cls,
-        molar_masses,
+        flow_model,
     ):
         """Create an adiabatic plug-flow reactor."""
         return cls(
-            molar_masses=molar_masses,
+            flow_model=flow_model,
         )
 
     @classmethod
     def with_constant_jacket_temperature(
         cls,
-        molar_masses,
+        flow_model,
         jacket_temperature,
         overall_heat_transfer_coefficient,
         heat_transfer_area_per_volume,
     ):
         """Create a PFR with a constant jacket temperature."""
-        if overall_heat_transfer_coefficient <= 0:
-            raise ValueError(
-                "overall_heat_transfer_coefficient "
-                "must be positive for jacket heat transfer."
-            )
-
-        if heat_transfer_area_per_volume <= 0:
-            raise ValueError(
-                "heat_transfer_area_per_volume "
-                "must be positive for jacket heat transfer."
-            )
-
         return cls(
-            molar_masses=molar_masses,
+            flow_model=flow_model,
             jacket_temperature=jacket_temperature,
             overall_heat_transfer_coefficient=(
                 overall_heat_transfer_coefficient
@@ -374,3 +396,37 @@ class PlugFlowReactor:
                 heat_transfer_area_per_volume
             ),
         )
+
+    def __repr__(self):
+        lines = [
+            "PlugFlowReactor(",
+            f"    flow_model={self.flow_model!r},",
+        ]
+
+        if self.jacket_temperature is None:
+            lines.append(
+                "    heat_transfer='adiabatic',"
+            )
+
+        else:
+            lines.extend(
+                [
+                    "    heat_transfer='constant_jacket_temperature',",
+                    (
+                        "    jacket_temperature="
+                        f"{self.jacket_temperature:g} K,"
+                    ),
+                    (
+                        "    overall_heat_transfer_coefficient="
+                        f"{self.overall_heat_transfer_coefficient:g} "
+                        "W/(m²·K),"
+                    ),
+                    (
+                        "    heat_transfer_area_per_volume="
+                        f"{self.heat_transfer_area_per_volume:g} 1/m,"
+                    ),
+                ]
+            )
+
+        lines.append(")")
+        return "\n".join(lines)

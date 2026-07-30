@@ -1,18 +1,44 @@
 import numpy as np
 
+from virtualreactor.units import (
+    to_magnitude,
+    ureg,
+)
+
+
 class PropertyModel:
     """Calculate thermophysical properties from the current state."""
 
     def __init__(
         self,
         evaluation_function,
-        model_name,
         composition_evaluation_function=None,
+        model_name=None,
     ):
-        self._evaluation_function = evaluation_function
+        if not callable(evaluation_function):
+            raise TypeError(
+                "evaluation_function must be callable."
+            )
+
+        if (
+            composition_evaluation_function is not None
+            and not callable(
+                composition_evaluation_function
+            )
+        ):
+            raise TypeError(
+                "composition_evaluation_function "
+                "must be callable or None."
+            )
+
+        self._evaluation_function = (
+            evaluation_function
+        )
+
         self._composition_evaluation_function = (
             composition_evaluation_function
         )
+
         self.model_name = model_name
 
     @classmethod
@@ -22,8 +48,22 @@ class PropertyModel:
         heat_capacity,
     ):
         """Create a model with constant thermophysical properties."""
-        density = float(density)
-        heat_capacity = float(heat_capacity)
+
+        density = to_magnitude(
+            density,
+            ureg.kilogram / ureg.meter**3,
+            "density",
+        )
+
+        heat_capacity = to_magnitude(
+            heat_capacity,
+            ureg.joule
+            / (
+                ureg.kilogram
+                * ureg.kelvin
+            ),
+            "heat_capacity",
+        )
 
         if density <= 0.0:
             raise ValueError(
@@ -44,7 +84,9 @@ class PropertyModel:
 
         return cls(
             evaluation_function=evaluate_constant,
-            composition_evaluation_function=evaluate_constant,
+            composition_evaluation_function=(
+                evaluate_constant
+            ),
             model_name="constant",
         )
 
@@ -55,6 +97,7 @@ class PropertyModel:
         pressure,
     ):
         """Evaluate properties from species concentrations."""
+
         concentrations = np.asarray(
             concentrations,
             dtype=float,
@@ -65,15 +108,12 @@ class PropertyModel:
                 "concentrations must be one-dimensional."
             )
 
-        # if np.any(concentrations < 0.0):
-        #     raise ValueError(
-        #         "concentrations must not be negative."
-        #     )
-
-        density, heat_capacity = self._evaluation_function(
-            concentrations,
-            temperature,
-            pressure,
+        density, heat_capacity = (
+            self._evaluation_function(
+                concentrations,
+                temperature,
+                pressure,
+            )
         )
 
         return self._validate_properties(
@@ -88,6 +128,7 @@ class PropertyModel:
         pressure,
     ):
         """Evaluate properties from mole fractions."""
+
         mole_fractions = np.asarray(
             mole_fractions,
             dtype=float,
@@ -98,23 +139,29 @@ class PropertyModel:
                 "mole_fractions must be one-dimensional."
             )
 
-        # if np.any(mole_fractions < 0.0):
-        #     raise ValueError(
-        #         "mole_fractions must not be negative."
-        #     )
-
         total = np.sum(mole_fractions)
+
+        if not np.isfinite(total):
+            raise ValueError(
+                "Mole fractions must be finite."
+            )
 
         if total <= 0.0:
             raise ValueError(
                 "Mole fractions must have a positive sum."
             )
 
-        mole_fractions = mole_fractions / total
+        mole_fractions = (
+            mole_fractions / total
+        )
 
-        if self._composition_evaluation_function is None:
+        if (
+            self._composition_evaluation_function
+            is None
+        ):
             raise NotImplementedError(
-                f"Property model {self.model_name!r} does not support "
+                f"Property model "
+                f"{self.model_name!r} does not support "
                 "evaluation from composition."
             )
 
@@ -136,9 +183,24 @@ class PropertyModel:
         density,
         heat_capacity,
     ):
-        """Validate and return calculated properties."""
+        """Validate calculated SI property values."""
+
         density = float(density)
-        heat_capacity = float(heat_capacity)
+        heat_capacity = float(
+            heat_capacity
+        )
+
+        if not np.isfinite(density):
+            raise ValueError(
+                "Calculated density must be finite."
+            )
+
+        if not np.isfinite(
+            heat_capacity
+        ):
+            raise ValueError(
+                "Calculated heat capacity must be finite."
+            )
 
         if density <= 0.0:
             raise ValueError(
@@ -154,74 +216,49 @@ class PropertyModel:
 
     def __repr__(self):
         return (
-            f"PropertyModel("
+            "PropertyModel("
             f"model_name={self.model_name!r})"
         )
 
 
+class ConstantVolumetricFlow:
+    """Constant volumetric flow model for incompressible fluids."""
 
-# class PropertyModel:
-#     """Calculate thermophysical properties from the current state."""
+    def __init__(
+        self,
+        volumetric_flow,
+    ):
+        self.volumetric_flow = to_magnitude(
+            volumetric_flow,
+            ureg.meter**3 / ureg.second,
+            "volumetric_flow",
+        )
 
-#     def __init__(self, evaluation_function, model_name):
-#         self._evaluation_function = evaluation_function
-#         self.model_name = model_name
+        if not np.isfinite(
+            self.volumetric_flow
+        ):
+            raise ValueError(
+                "volumetric_flow must be finite."
+            )
 
-#     @classmethod
-#     def constant(
-#         cls,
-#         density,
-#         heat_capacity,
-#     ):
-#         """Create a model with constant thermophysical properties."""
-#         density = float(density)
-#         heat_capacity = float(heat_capacity)
+        if self.volumetric_flow <= 0.0:
+            raise ValueError(
+                "volumetric_flow must be positive."
+            )
 
-#         if density <= 0.0:
-#             raise ValueError("density must be positive.")
+    def evaluate(
+        self,
+        molar_flows,
+        temperature,
+        pressure,
+    ):
+        """Return the local volumetric flow in cubic metres per second."""
 
-#         if heat_capacity <= 0.0:
-#             raise ValueError("heat_capacity must be positive.")
+        return self.volumetric_flow
 
-#         def evaluate_constant(
-#             concentrations,
-#             temperature,
-#             pressure,
-#         ):
-#             return density, heat_capacity
-
-#         return cls(
-#             evaluation_function=evaluate_constant,
-#             model_name="constant",
-#         )
-
-#     def evaluate(
-#         self,
-#         concentrations,
-#         temperature,
-#         pressure,
-#     ):
-#         """Return density and mass-specific heat capacity."""
-#         density, heat_capacity = self._evaluation_function(
-#             concentrations,
-#             temperature,
-#             pressure,
-#         )
-
-#         if density <= 0.0:
-#             raise ValueError(
-#                 "Calculated density must be positive."
-#             )
-
-#         if heat_capacity <= 0.0:
-#             raise ValueError(
-#                 "Calculated heat capacity must be positive."
-#             )
-
-#         return float(density), float(heat_capacity)
-
-#     def __repr__(self):
-#         return (
-#             f"PropertyModel("
-#             f"model_name={self.model_name!r})"
-#         )
+    def __repr__(self):
+        return (
+            "ConstantVolumetricFlow("
+            f"volumetric_flow="
+            f"{self.volumetric_flow!r})"
+        )
