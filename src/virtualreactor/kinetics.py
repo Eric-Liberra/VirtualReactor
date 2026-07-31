@@ -1,5 +1,6 @@
 import numpy as np
 from virtualreactor.units import to_magnitude, to_magnitude_array, ureg
+import h5py
 
 R_GAS_CONSTANT = 8.314462618  # J mol^-1 K^-1
 
@@ -282,6 +283,101 @@ class Mechanism:
             self.reaction_enthalpies
             - temperature * self.reaction_entropies
         )
+
+    def to_hdf5_group(
+        self,
+        group,
+    ):
+        """Write the mechanism to an HDF5 group."""
+
+        group.attrs["class_name"] = (
+            self.__class__.__name__
+        )
+
+        group.create_dataset(
+            "species",
+            data=np.asarray(
+                self.species,
+                dtype=h5py.string_dtype(
+                    encoding="utf-8"
+                ),
+            ),
+        )
+
+        group.create_dataset(
+            "stoichiometry",
+            data=self.stoichiometry,
+        )
+
+        if self.reaction_orders is not None:
+            group.create_dataset(
+                "reaction_orders",
+                data=self.reaction_orders,
+            )
+
+        if self.pre_exponential_factors is not None:
+            group.create_dataset(
+                "pre_exponential_factors",
+                data=self.pre_exponential_factors,
+            )
+
+        if self.activation_energies is not None:
+            group.create_dataset(
+                "activation_energies",
+                data=self.activation_energies,
+            )
+
+        if self.reaction_enthalpies is not None:
+            group.create_dataset(
+                "reaction_enthalpies",
+                data=self.reaction_enthalpies,
+            )
+
+        if self.reaction_entropies is not None:
+            group.create_dataset(
+                "reaction_entropies",
+                data=self.reaction_entropies,
+            )
+
+        if self.reversible is not None:
+            group.create_dataset(
+                "reversible",
+                data=self.reversible,
+            )
+
+        if self.reverse_reaction_orders is not None:
+            group.create_dataset(
+                "reverse_reaction_orders",
+                data=self.reverse_reaction_orders,
+            )
+
+    @classmethod
+    def from_hdf5_group(
+        cls,
+        group,
+    ):
+        """Create a mechanism from an HDF5 group."""
+
+        kwargs = {
+            "species": list(group["species"].asstr()[...]),
+            "stoichiometry": group["stoichiometry"][...],
+        }
+
+        optional_datasets = [
+            "reaction_orders",
+            "pre_exponential_factors",
+            "activation_energies",
+            "reaction_enthalpies",
+            "reaction_entropies",
+            "reversible",
+            "reverse_reaction_orders",
+        ]
+
+        for name in optional_datasets:
+            if name in group:
+                kwargs[name] = group[name][...]
+
+        return cls(**kwargs)
 
     def equilibrium_constants(self, temperature):
         """Return thermodynamic equilibrium constants at temperature."""

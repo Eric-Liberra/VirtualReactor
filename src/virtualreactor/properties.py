@@ -14,7 +14,16 @@ class PropertyModel:
         evaluation_function,
         composition_evaluation_function=None,
         model_name=None,
+        model_parameters=None,
     ):
+        self.model_name = model_name
+
+        self.model_parameters = (
+            {}
+            if model_parameters is None
+            else dict(model_parameters)
+        )
+
         if not callable(evaluation_function):
             raise TypeError(
                 "evaluation_function must be callable."
@@ -40,6 +49,94 @@ class PropertyModel:
         )
 
         self.model_name = model_name
+
+    def to_hdf5_group(
+        self,
+        group,
+    ):
+        """Write the property model configuration to an HDF5 group."""
+
+        if self.model_name is None:
+            raise ValueError(
+                "Property models without a model_name "
+                "cannot be serialized."
+            )
+
+        group.attrs["class_name"] = (
+            self.__class__.__name__
+        )
+
+        group.attrs["model_name"] = (
+            self.model_name
+        )
+
+        parameters_group = group.create_group(
+            "parameters"
+        )
+
+        for name, value in (
+            self.model_parameters.items()
+        ):
+            if value is None:
+                continue
+
+            parameters_group.attrs[name] = value
+
+    @classmethod
+    def from_hdf5_group(
+        cls,
+        group,
+    ):
+        """Create a property model from an HDF5 group."""
+
+        model_name = group.attrs["model_name"]
+
+        if isinstance(model_name, bytes):
+            model_name = model_name.decode(
+                "utf-8"
+            )
+
+        parameters = {}
+
+        if "parameters" in group:
+            parameters = {
+                name: value
+                for name, value
+                in group["parameters"].attrs.items()
+            }
+
+        if model_name == "constant":
+            required_parameters = {
+                "density",
+                "heat_capacity",
+            }
+
+            missing_parameters = (
+                required_parameters
+                - parameters.keys()
+            )
+
+            if missing_parameters:
+                missing = ", ".join(
+                    sorted(missing_parameters)
+                )
+
+                raise ValueError(
+                    "Constant property model is missing "
+                    f"parameters: {missing}."
+                )
+
+            return cls.constant(
+                density=parameters["density"],
+                heat_capacity=(
+                    parameters["heat_capacity"]
+                ),
+            )
+
+        raise ValueError(
+            "Unsupported property model type: "
+            f"{model_name!r}."
+        )
 
     @classmethod
     def constant(
@@ -88,6 +185,10 @@ class PropertyModel:
                 evaluate_constant
             ),
             model_name="constant",
+            model_parameters={
+                "density": density,
+                "heat_capacity": heat_capacity,
+            },
         )
 
     def evaluate(
@@ -245,6 +346,33 @@ class ConstantVolumetricFlow:
             raise ValueError(
                 "volumetric_flow must be positive."
             )
+
+    def to_hdf5_group(
+        self,
+        group,
+    ):
+        """Write the flow model to an HDF5 group."""
+
+        group.attrs["class_name"] = (
+            self.__class__.__name__
+        )
+
+        group.attrs["volumetric_flow"] = (
+            self.volumetric_flow
+        )
+
+    @classmethod
+    def from_hdf5_group(
+        cls,
+        group,
+    ):
+        """Create a constant volumetric flow model from an HDF5 group."""
+
+        return cls(
+            volumetric_flow=group.attrs[
+                "volumetric_flow"
+            ]
+        )
 
     def evaluate(
         self,

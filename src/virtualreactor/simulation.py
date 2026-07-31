@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.integrate import solve_ivp
-
+from .results import SimulationResult
+import h5py
 
 class Simulation:
     """Couple a reaction mechanism and a reactor model."""
@@ -14,6 +15,76 @@ class Simulation:
         self.mechanism = mechanism
         self.reactor = reactor
         self.properties=properties
+
+    def to_hdf5_group(
+        self,
+        group,
+    ):
+        """Write the complete simulation model to an HDF5 group."""
+
+        mechanism_group = group.create_group(
+            "mechanism"
+        )
+        self.mechanism.to_hdf5_group(
+            mechanism_group
+        )
+
+        reactor_group = group.create_group(
+            "reactor"
+        )
+        self.reactor.to_hdf5_group(
+            reactor_group
+        )
+
+        properties_group = group.create_group(
+            "properties"
+        )
+        self.properties.to_hdf5_group(
+            properties_group
+        )
+
+    def save_hdf5(
+        self,
+        path,
+    ):
+        """Write the simulation model to an HDF5 file."""
+
+        with h5py.File(
+            path,
+            "w",
+        ) as file:
+            simulation_group = file.create_group(
+                "simulation"
+            )
+
+            self.to_hdf5_group(
+                simulation_group
+            )
+
+    @classmethod
+    def from_hdf5_group(
+        cls,
+        group,
+    ):
+        """Create a simulation model from an HDF5 group."""
+
+        mechanism = Mechanism.from_hdf5_group(
+            group["mechanism"]
+        )
+
+        reactor = Reactor.from_hdf5_group(
+            group["reactor"]
+        )
+
+        properties = PropertyModel.from_hdf5_group(
+            group["properties"]
+        )
+
+        return cls(
+            mechanism=mechanism,
+            reactor=reactor,
+            properties=properties,
+        )
 
     def rhs(self, xi, state):
         """Evaluate the governing reactor equations.
@@ -74,42 +145,6 @@ class Simulation:
             transformed_chemical_contribution
             + reactor_contribution
         )
-        # n_species = len(self.mechanism.species)
-
-        # concentrations = state[:n_species]
-        # temperature = state[n_species]
-        # pressure = state[n_species + 1]
-
-        # density, heat_capacity = self.properties.evaluate(
-        #     concentrations,
-        #     temperature,
-        #     pressure,
-        # )
-
-        # chemical_contribution = self.mechanism.chemical_contribution(
-        #     state=state,
-        #     density=density,
-        #     heat_capacity=heat_capacity,
-        # )
-
-        # transformed_chemical_contribution = (
-        #     self.reactor.transformation_operator(
-        #         chemical_contribution
-        #     )
-        # )
-
-        # reactor_contribution = self.reactor.derivative_contribution(
-        #     state=state,
-        #     density=density,
-        #     heat_capacity=heat_capacity,
-        # )
-
-        # state_derivative = (
-        #     transformed_chemical_contribution
-        #     + reactor_contribution
-        # )
-
-        # return state_derivative
 
     def solve(
         self,
@@ -138,4 +173,12 @@ class Simulation:
                 f"Simulation failed: {solution.message}"
             )
 
-        return solution
+        return SimulationResult(
+            coordinates=solution.t,
+            states=solution.y.T,
+            species=self.mechanism.species,
+            coordinate_name="time",
+            species_state_name="concentration",
+            success=solution.success,
+            message=solution.message,
+        )

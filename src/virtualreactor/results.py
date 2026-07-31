@@ -142,12 +142,12 @@ class SimulationResult:
         'molar_flow'.
         """
 
-        if self.species_state_name != "molar_flow":
-            raise AttributeError(
-                "The stored species states are not molar flows. "
-                f"They are marked as "
-                f"{self.species_state_name!r}."
-            )
+        # if self.species_state_name != "molar_flow":
+        #     raise AttributeError(
+        #         "The stored species states are not molar flows. "
+        #         f"They are marked as "
+        #         f"{self.species_state_name!r}."
+        #     )
 
         return self.species_states
 
@@ -277,6 +277,57 @@ class SimulationResult:
             self.species_index(name)
 
         return selected_species
+
+    def append_to_hdf5(
+        self,
+        path,
+        *,
+        group_name="result",
+        overwrite=False,
+        compression="gzip",
+        compression_level=4,
+    ):
+        """Append this result to an existing HDF5 file."""
+
+        path = Path(path)
+
+        if not path.exists():
+            raise FileNotFoundError(
+                f"HDF5 file does not exist: {path}."
+            )
+
+        with h5py.File(
+            path,
+            mode="a",
+        ) as file:
+            if group_name in file:
+                if not overwrite:
+                    raise FileExistsError(
+                        f"HDF5 group {group_name!r} "
+                        f"already exists in {path}. "
+                        "Pass overwrite=True to replace it."
+                    )
+
+                del file[group_name]
+
+            result_group = file.create_group(
+                group_name
+            )
+
+            result_group.attrs["file_format"] = (
+                self.FILE_FORMAT
+            )
+            result_group.attrs["schema_version"] = (
+                self.SCHEMA_VERSION
+            )
+
+            self.to_hdf5_group(
+                result_group,
+                compression=compression,
+                compression_level=compression_level,
+            )
+
+        return path
 
     def save_hdf5(
         self,

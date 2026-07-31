@@ -16,4 +16,4 @@ __all__=["Mechanism",
          "ureg",
          "Q_",
          "to_magnitude",
-         "to_magnitude_array"]
+         "to_magnitude_array",]

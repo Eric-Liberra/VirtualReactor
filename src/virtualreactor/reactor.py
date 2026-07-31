@@ -1,8 +1,49 @@
 import numpy as np
 from virtualreactor.units import to_magnitude, ureg
 
+class Reactor:
+    """Base class for reactor models."""
 
-class BatchReactor:
+    def _hdf5_parameters(
+        self,
+    ):
+        return {}
+
+    def _write_hdf5_children(
+        self,
+        group,
+    ):
+        pass
+
+    def to_hdf5_group(
+        self,
+        group,
+    ):
+        """Write the reactor configuration to an HDF5 group."""
+
+        group.attrs["class_name"] = (
+            self.__class__.__name__
+        )
+
+        parameters_group = group.create_group(
+            "parameters"
+        )
+
+        for name, value in (
+            self._hdf5_parameters().items()
+        ):
+            if value is not None:
+                parameters_group.create_dataset(
+                    name,
+                    data=value,
+                )
+
+        self._write_hdf5_children(
+            group
+        )
+
+
+class BatchReactor(Reactor):
     """Ideal closed batch reactor.
 
     The reactor contributes no inlet or outlet terms. In the simplest
@@ -64,7 +105,7 @@ class BatchReactor:
         )
 
 
-class PlugFlowReactor:
+class PlugFlowReactor(Reactor):
     """Steady-state plug-flow reactor using molar flows.
 
     The reactor state is
@@ -177,6 +218,34 @@ class PlugFlowReactor:
                     "heat_transfer_area_per_volume must be "
                     "positive when jacket heat transfer is enabled."
                 )
+
+    def _hdf5_parameters(
+        self,
+    ):
+        return {
+            "jacket_temperature": (
+                self.jacket_temperature
+            ),
+            "overall_heat_transfer_coefficient": (
+                self.overall_heat_transfer_coefficient
+            ),
+            "heat_transfer_area_per_volume": (
+                self.heat_transfer_area_per_volume
+            ),
+        }
+
+    def _write_hdf5_children(
+        self,
+        group,
+    ):
+        flow_group = group.create_group(
+            "flow_model"
+        )
+
+        self.flow_model.to_hdf5_group(
+            flow_group
+        )
+
 
     def chemical_state(
         self,
