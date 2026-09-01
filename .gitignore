@@ -40,3 +40,16 @@ results/
 # Optional: local data
 data/raw/
 data/processed/
+
+# LaTeX build files
+*.aux
+*.log
+*.toc
+*.out
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.bbl
+*.blg
+*.bcf
+*.run.xml

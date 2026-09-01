@@ -1,0 +1,106 @@
+\newpage
+
+\chapter{Mathematical Framework}
+\begin{equation}
+    \boxed{
+    \frac{\mathrm{d}\mathbf{y}}{\mathrm{d}\xi}
+    =
+    \mathcal{T}_{\mathrm{reactor}}
+    \left(
+        \mathbf{s}_{\mathrm{chemical}}
+    \right)
+    +
+    \mathbf{s}_{\mathrm{reactor}}
+    }
+    \label{eq:general_state_equation}
+\end{equation}
+
+\noindent
+where
+
+\begin{description}
+
+    \item[$\mathbf{y}$] Reactor state vector. Its definition depends on the
+    reactor model.
+
+    For a batch reactor, the state vector is
+
+\begin{equation}
+    \mathbf{y}_{\mathrm{Batch}}
+    =
+    \begin{pmatrix}
+        \mathbf{c} \\
+        T \\
+        p
+    \end{pmatrix},
+    \qquad
+    \mathbf{c}
+    =
+    \begin{pmatrix}
+        c_1 & c_2 & \cdots & c_{N_s}
+    \end{pmatrix}^{\mathrm{T}}.
+\end{equation}
+
+    Here, $\mathbf{c}$ denotes the concentration vector, $T$ the reactor
+    temperature, and $p$ the pressure.
+
+    For a plug-flow reactor (PFR), the state vector is
+
+    \begin{equation}
+        \mathbf{y}_{\mathrm{PFR}}
+        =
+        \begin{pmatrix}
+            \mathbf{F} \\
+            T \\
+            p
+        \end{pmatrix},
+        \qquad
+        \mathbf{F}
+        =
+        \begin{pmatrix}
+            F_1 & F_2 & \cdots & F_{N_s}
+        \end{pmatrix}^{\mathrm{T}}.
+    \end{equation}
+
+    Here, $\mathbf{F}$ denotes the vector of molar flow rates.
+
+    \item[$\xi$] Independent variable with respect to which the reactor state
+    is integrated.
+    For a batch reactor, $\xi = t$, where $t$ is the reaction time.
+    For a PFR, $\xi = V$, where $V$ is the reactor volume.
+
+    \item[$\mathbf{s}_{\mathrm{chemical}}$] Chemical source vector calculated
+    by the reaction mechanism.
+    For both batch reactors and PFRs, the species contribution is obtained
+    from the reaction rates and stoichiometry as
+    $\boldsymbol{\nu}\mathbf{r}$.
+    Additional chemical contributions, such as the heat released or consumed
+    by the reactions, may also be included.
+
+    \item[$\mathcal{T}_{\mathrm{reactor}}$] Reactor-specific transformation
+    of the chemical source vector.
+    For a constant-volume batch reactor, the species transformation is the
+    identity transformation, such that
+
+    \begin{equation}
+        \frac{\mathrm{d}\mathbf{c}}{\mathrm{d}t}
+        =
+        \boldsymbol{\nu}\mathbf{r}.
+    \end{equation}
+
+    For a PFR, the transformation converts the volumetric chemical source
+    into the derivative of molar flow with respect to reactor volume, such that
+
+    \begin{equation}
+        \frac{\mathrm{d}\mathbf{F}}{\mathrm{d}V}
+        =
+        \boldsymbol{\nu}\mathbf{r}.
+    \end{equation}
+
+    \item[$\mathbf{s}_{\mathrm{reactor}}$] Reactor-specific contribution that
+    is independent of the intrinsic chemical source term.
+    For an ideal adiabatic batch reactor, this contribution may be zero.
+    For a non-isothermal PFR, it may contain contributions such as heat
+    transfer between the reactor and an external jacket.
+
+\end{description}

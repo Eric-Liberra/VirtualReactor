@@ -1,0 +1,617 @@
+\chapter{Software Architecture}
+
+\section{Architectural Overview}
+
+VirtualReactor follows a modular architecture in which chemical kinetics,
+reactor physics, thermophysical properties, numerical integration, and data
+management are represented by separate software components.
+
+The architecture reflects the mathematical formulation introduced in the
+previous chapter,
+
+\begin{equation}
+    \frac{\mathrm{d}\mathbf{y}}{\mathrm{d}\xi}
+    =
+    \mathcal{T}_{\mathrm{reactor}}
+    \left(
+        \mathbf{s}_{\mathrm{chemical}}
+    \right)
+    +
+    \mathbf{s}_{\mathrm{reactor}}.
+\end{equation}
+
+Each term of this equation can be associated with a specific component of
+the software architecture. This separation allows reaction mechanisms,
+reactor models, and physical property models to be developed and exchanged
+independently.
+
+
+\section{Core Components and Initialization}
+
+\subsection{Mechanism}
+
+The \texttt{Mechanism} class defines the chemical reaction network and its
+kinetic and thermodynamic parameters. The following reaction network is used
+as an example throughout this section.
+
+\subsubsection{Reaction Network}
+
+Consider a system consisting of four chemical species
+$A$, $B$, $C$, and $D$ connected by three reversible reactions:
+
+\begin{align}
+    A &\rightleftharpoons B
+    && \text{Reaction 1}, \\
+    B &\rightleftharpoons C
+    && \text{Reaction 2}, \\
+    2A &\rightleftharpoons D
+    && \text{Reaction 3}.
+\end{align}
+
+The corresponding stoichiometric matrix is
+
+\begin{equation}
+    \boldsymbol{\nu}
+    =
+    \begin{bmatrix}
+        -1 &  0 & -2 \\
+         1 & -1 &  0 \\
+         0 &  1 &  0 \\
+         0 &  0 &  1
+    \end{bmatrix},
+\end{equation}
+
+where each row represents a chemical species and each column represents one
+reaction. Negative coefficients correspond to reactants and positive
+coefficients to products.
+
+
+\subsubsection{Kinetic and Thermodynamic Description}
+
+The rate of a chemical reaction is determined by the free-energy barrier
+between the reactants and the transition state. Within transition state
+theory, this barrier is expressed as
+
+\begin{equation}
+    \Delta G^\ddagger(T)
+    =
+    \Delta H^\ddagger
+    -
+    T\Delta S^\ddagger,
+\end{equation}
+
+where $\Delta H^\ddagger$ and $\Delta S^\ddagger$ are the activation
+enthalpy and activation entropy, respectively.
+
+The corresponding rate constant is given by the Eyring equation,
+
+\begin{equation}
+    k(T)
+    =
+    \frac{k_{\mathrm{B}}T}{h}
+    \exp\left(
+        \frac{\Delta S^\ddagger}{R}
+    \right)
+    \exp\left(
+        -\frac{\Delta H^\ddagger}{RT}
+    \right),
+\end{equation}
+
+with the Boltzmann constant $k_{\mathrm{B}}$, the Planck constant $h$,
+and the universal gas constant $R$.
+
+The thermodynamic driving force of a reversible reaction is described
+separately by the reaction Gibbs energy,
+
+\begin{equation}
+    \Delta G_{\mathrm{r}}(T)
+    =
+    \Delta H_{\mathrm{r}}
+    -
+    T\Delta S_{\mathrm{r}},
+\end{equation}
+
+which determines the equilibrium constant according to
+
+\begin{equation}
+    K(T)
+    =
+    \exp\left(
+        -\frac{\Delta G_{\mathrm{r}}(T)}{RT}
+    \right).
+\end{equation}
+
+Thus, the activation parameters determine how fast a reaction approaches
+equilibrium, whereas the reaction thermodynamics determine the position of
+that equilibrium.
+
+
+\subsubsection{Initialization}
+
+The reaction network can be initialized in \textsc{VirtualReactor} using the
+\texttt{Mechanism} class:
+
+\begin{verbatim}
+
+import virtualreactor as vr
+
+
+mechanism = vr.Mechanism(
+    species=['A', 'B', 'C', 'D'],
+
+    stoichiometry=np.array([
+        # r1, r2, r3
+        [-1,  0, -2],  # Species a
+        [ 1, -1,  0],  # Species b
+        [ 0,  1,  0],  # Species c
+        [ 0,  0,  1]   # Species d
+    ]),
+
+    pre_exponential_factors=np.array([
+        1.0e7,  # A1
+        5.0e7,  # A2
+        1.0e6   # A3
+    ]),
+
+    activation_energies=np.array([
+        50_000.0,  # E1
+        60_000.0,  # E2
+        45_000.0   # E3
+    ]) * ureg.joule / ureg.mol,
+
+    reaction_enthalpies=np.array([
+        -40_000.0,  # dH1: A -> B
+        -30_000.0,  # dH2: B -> C
+        -50_000.0   # dH3: 2 A -> D
+    ]) * ureg.joule / ureg.mol,
+
+    reaction_entropies=np.array([
+        -80.0,   # dS1: A -> B
+        -100.0,  # dS2: B -> C
+        -150.0   # dS3: 2 A -> D
+    ]) * ureg.joule / (ureg.mol * ureg.kelvin),
+
+    reversible=np.array([
+        True,
+        True,
+        True
+    ])
+)
+\end{verbatim}
+
+The order of the species and reactions must remain consistent across all
+parameters. The rows of the stoichiometric matrix correspond to the species
+defined in \texttt{species}, while its columns correspond to the individual
+reactions. Consequently, the kinetic and thermodynamic parameter arrays
+contain one entry for each reaction.
+
+In this example, all three reactions are reversible. The arrays containing
+the pre-exponential factors, activation energies, reaction enthalpies, and
+reaction entropies therefore describe reactions 1--3 in the same order as
+the columns of the stoichiometric matrix.
+
+
+
+\subsection{Reactor Models}
+
+The reactor model defines how the chemical source terms generated by the
+reaction mechanism are translated into changes of the reactor state.
+Different reactor models can therefore be combined with the same chemical
+mechanism.
+
+In the following example, three reactor configurations are defined:
+
+\begin{enumerate}
+    \item an ideal batch reactor,
+    \item an adiabatic plug-flow reactor with constant volumetric flow, and
+    \item a plug-flow reactor with external heat transfer.
+\end{enumerate}
+
+\begin{verbatim}
+reactor_list = [
+
+    vr.BatchReactor(),
+
+    vr.PlugFlowReactor(
+        flow_model=vr.ConstantVolumetricFlow(
+            1.5 * ureg.liter / ureg.minute
+        )
+    ),
+
+    vr.PlugFlowReactor(
+        flow_model=vr.ConstantVolumetricFlow(
+            1.5 * ureg.liter / ureg.minute
+        ),
+
+        jacket_temperature=300 * ureg.kelvin,
+
+        overall_heat_transfer_coefficient=(
+            300
+            * ureg.watt
+            / (
+                ureg.meter**2
+                * ureg.kelvin
+            )
+        ),
+
+        heat_transfer_area_per_volume=(
+            200 / ureg.meter
+        )
+    )
+]
+\end{verbatim}
+
+The \texttt{BatchReactor} represents a closed reactor system in which the
+state evolves with time. No flow model is required because no material enters
+or leaves the reactor.
+
+For a plug-flow reactor, the species state is represented by molar flow rates.
+The local concentrations therefore depend on the volumetric flow rate. In this
+example, the flow behavior is described by
+
+\begin{equation}
+    \dot{V}
+    =
+    1.5~\mathrm{L\,min^{-1}},
+\end{equation}
+
+using the \texttt{ConstantVolumetricFlow} model.
+
+The second plug-flow reactor is adiabatic with respect to external heat
+transfer, whereas the third configuration introduces heat exchange with an
+external jacket. The heat-transfer contribution is characterized by the jacket
+temperature
+
+\begin{equation}
+    T_{\mathrm{jacket}} = 300~\mathrm{K},
+\end{equation}
+
+the overall heat-transfer coefficient
+
+\begin{equation}
+    U = 300~\mathrm{W\,m^{-2}\,K^{-1}},
+\end{equation}
+
+and the heat-transfer area per reactor volume
+
+\begin{equation}
+    a_V = 200~\mathrm{m^{-1}}.
+\end{equation}
+
+Together, $U$ and $a_V$ determine the strength of heat exchange between the
+reacting fluid and the external jacket.
+
+
+\subsection{Physical Property Model}
+
+Thermophysical properties required by the reactor energy balance are provided
+independently through a \texttt{PropertyModel}. This allows the same reactor
+configuration to be evaluated using different assumptions for the physical
+properties of the reacting mixture.
+
+For the present example, constant density and heat capacity are assumed:
+
+\begin{verbatim}
+constant_density_heat_capacity = vr.PropertyModel.constant(
+    density=1000.0 * ureg.kg / ureg.m**3,
+
+    heat_capacity=(
+        4180.0
+        * ureg.joule
+        / (
+            ureg.kg
+            * ureg.kelvin
+        )
+    )
+)
+\end{verbatim}
+
+The model therefore assumes
+
+\begin{equation}
+    \rho = 1000~\mathrm{kg\,m^{-3}}
+\end{equation}
+
+and
+
+\begin{equation}
+    c_p = 4180~\mathrm{J\,kg^{-1}\,K^{-1}}.
+\end{equation}
+
+These values approximately correspond to a water-like liquid and are used here
+as a simple constant-property model.
+
+Separating the physical property model from the reactor model makes it possible
+to exchange property descriptions independently of the reaction mechanism or
+reactor configuration. This is particularly useful for systematic parameter
+studies and the generation of structured simulation datasets.
+
+
+\subsection{Simulation and Initial Conditions}
+
+Once the reaction mechanism, reactor models, and physical properties have been
+defined, they are combined in a \texttt{Simulation} object. The initial state
+and integration interval depend on the selected reactor model.
+
+For the three reactor configurations introduced above, the integration limits
+are defined as
+
+\begin{verbatim}
+xi_list = [300, 0.05, 0.05]
+\end{verbatim}
+
+The corresponding initial states are
+
+\begin{verbatim}
+initial_states = [
+    np.array([1, 0, 0, 0, 300, 0]),      # Batch
+    np.array([2.5e-5, 0, 0, 0, 300, 0]), # PFR 1
+    np.array([2.5e-5, 0, 0, 0, 300, 0]), # PFR 2
+]
+\end{verbatim}
+
+For the batch reactor, the state vector is
+
+\begin{equation}
+    \mathbf{y}_{0,\mathrm{Batch}}
+    =
+    \begin{pmatrix}
+        \mathbf{c}_0 \\
+        T_0 \\
+        p_0
+    \end{pmatrix},
+\end{equation}
+
+where the species entries represent initial concentrations. In the present
+example,
+
+\begin{equation}
+    \mathbf{c}_0
+    =
+    \begin{pmatrix}
+        1 & 0 & 0 & 0
+    \end{pmatrix}^{\mathrm{T}}
+    \mathrm{mol\,m^{-3}},
+\end{equation}
+
+with an initial temperature of $T_0 = 300~\mathrm{K}$.
+
+For the plug-flow reactors, the state vector instead contains molar flow rates,
+
+\begin{equation}
+    \mathbf{y}_{0,\mathrm{PFR}}
+    =
+    \begin{pmatrix}
+        \mathbf{F}_0 \\
+        T_0 \\
+        p_0
+    \end{pmatrix},
+\end{equation}
+
+with
+
+\begin{equation}
+    \mathbf{F}_0
+    =
+    \begin{pmatrix}
+        2.5\times10^{-5} & 0 & 0 & 0
+    \end{pmatrix}^{\mathrm{T}}
+    \mathrm{mol\,s^{-1}}.
+\end{equation}
+
+The independent coordinate $\xi$ is interpreted according to the reactor
+model. For the batch reactor,
+
+\begin{equation}
+    \xi = t,
+\end{equation}
+
+and the simulation is performed over
+
+\begin{equation}
+    0 \leq t \leq 300~\mathrm{s}.
+\end{equation}
+
+For the plug-flow reactors,
+
+\begin{equation}
+    \xi = V,
+\end{equation}
+
+and the reactor state is integrated over
+
+\begin{equation}
+    0 \leq V \leq 0.05~\mathrm{m^3}.
+\end{equation}
+
+
+\subsubsection{Running the Simulations}
+
+The simulations are performed iteratively using the same reaction mechanism
+and physical property model while exchanging the reactor configuration:
+
+\begin{verbatim}
+results = []
+
+for i in range(3):
+
+    vdv_sim = vr.Simulation(
+        mechanism=van_de_vusse,
+        reactor=reactor_list[i],
+        properties=constant_density_heat_capacity
+    )
+
+    vdv_sim_result = vdv_sim.solve(
+        initial_state=initial_states[i],
+        xi_span=(0, xi_list[i])
+    )
+
+    results.append(vdv_sim_result)
+\end{verbatim}
+
+Each \texttt{Simulation} combines three independent model components:
+
+\begin{equation}
+    \boxed{
+    \texttt{Simulation}
+    =
+    \texttt{Mechanism}
+    +
+    \texttt{Reactor}
+    +
+    \texttt{PropertyModel}
+    }
+\end{equation}
+
+The \texttt{solve()} method integrates the reactor state from the specified
+initial condition over the interval \texttt{xi\_span}. The resulting
+\texttt{SimulationResult} is appended to \texttt{results}, allowing the
+different reactor configurations to be analyzed and compared within the same
+workflow.
+
+This modular initialization makes it possible to systematically vary reactor
+models, operating conditions, or physical property models while keeping the
+chemical mechanism unchanged.
+
+
+\subsubsection{Simulation Results}
+
+The \texttt{solve()} method performs the numerical integration and returns
+a \texttt{SimulationResult} object,
+
+\begin{equation}
+    \texttt{Simulation}
+    \xrightarrow{\;\texttt{solve()}\;}
+    \texttt{SimulationResult}.
+\end{equation}
+
+A \texttt{SimulationResult} represents the complete output of a single
+simulation. It stores the values of the independent coordinate $\xi$ together
+with the corresponding reactor states $\mathbf{y}(\xi)$.
+
+The result of a simulation can therefore be obtained as
+
+\begin{verbatim}
+result = simulation.solve(
+    initial_state=initial_state,
+    xi_span=(0, xi_end)
+)
+\end{verbatim}
+
+Conceptually, the numerical solution consists of
+
+\begin{equation}
+    \left\{
+        \xi_i,\,
+        \mathbf{y}(\xi_i)
+    \right\}_{i=1}^{N},
+\end{equation}
+
+where $N$ is the number of evaluated points along the simulation coordinate.
+
+For a batch reactor, the stored solution corresponds to
+
+\begin{equation}
+    \left\{
+        t_i,\,
+        \mathbf{c}(t_i),\,
+        T(t_i),\,
+        p(t_i)
+    \right\},
+\end{equation}
+
+whereas for a plug-flow reactor it corresponds to
+
+\begin{equation}
+    \left\{
+        V_i,\,
+        \mathbf{F}(V_i),\,
+        T(V_i),\,
+        p(V_i)
+    \right\}.
+\end{equation}
+
+Separating the numerical result from the \texttt{Simulation} object allows
+simulation data to be analyzed, plotted, compared, and stored independently
+of the numerical integration itself.
+
+
+\subsubsection{Serialization}
+
+Simulation results can be serialized for persistent storage and subsequent
+analysis. \textsc{VirtualReactor} uses the HDF5 format to store simulation
+data together with the information required to describe the corresponding
+simulation.
+
+A result can be written to an HDF5 file using
+
+\begin{verbatim}
+result.save_hdf5(
+    "data/raw/pfr_simulation.h5"
+)
+\end{verbatim}
+
+Serialization converts the in-memory representation of a
+\texttt{SimulationResult} into a persistent file representation,
+
+\begin{equation}
+    \texttt{SimulationResult}
+    \xrightarrow{\;\texttt{save\_hdf5()}\;}
+    \texttt{HDF5 file}.
+\end{equation}
+
+The HDF5 format is particularly suitable for numerical simulation data because
+it can efficiently store multidimensional numerical arrays together with
+structured metadata. This allows simulation results to be retained in a
+reproducible and machine-readable form and provides a basis for systematic
+parameter studies and the generation of larger simulation datasets.
+
+
+\subsubsection{Serialization}
+
+A \texttt{SimulationResult} exists initially as a Python object in memory.
+For persistent storage, the result can be serialized into an HDF5 file using
+
+\begin{verbatim}
+result.save_hdf5(
+    "simulation.h5"
+)
+\end{verbatim}
+
+The resulting file preserves both the numerical solution and the information
+required to interpret the stored state. Its hierarchical structure can be
+represented as
+
+\begin{verbatim}
+simulation.h5
+|
++-- coordinates
++-- states
++-- species
+|
++-- attributes
+    +-- file_format
+    +-- schema_version
+    +-- coordinate_name
+    +-- species_state_name
+    +-- success
+    +-- message
+\end{verbatim}
+
+The \texttt{coordinates} dataset contains the values of the independent
+simulation coordinate $\xi$. The \texttt{states} dataset contains the
+corresponding reactor states $\mathbf{y}(\xi)$, while \texttt{species}
+stores the associated species names.
+
+Additional information is stored as HDF5 attributes. In particular,
+\texttt{coordinate\_name} identifies the independent coordinate, such as
+time or reactor volume, and \texttt{species\_state\_name} identifies whether
+the species states represent concentrations or molar flow rates.
+
+A serialized result can subsequently be reconstructed using
+
+\begin{verbatim}
+result = vr.SimulationResult.load_hdf5(
+    "simulation.h5"
+)
+\end{verbatim}
