@@ -50,14 +50,14 @@ The notebooks are available in the [`examples/`](examples/) directory.
 
 VirtualReactor describes reactor systems through a general state equation
 
-$$
+```math
 \frac{d\mathbf{y}}{d\xi}
 =
 \mathcal{T}_{\mathrm{reactor}}
 \left(\mathbf{s}_{\mathrm{chemical}}\right)
 +
-\mathbf{s}_{\mathrm{reactor}},
-$$
+\mathbf{s}_{\mathrm{reactor}}
+```
 
 where the chemical source terms are determined by the reaction mechanism and transformed according to the selected reactor model.
 
