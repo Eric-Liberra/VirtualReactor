@@ -2,7 +2,7 @@
 
 \section{Architectural Overview}
 
-VirtualReactor follows a modular architecture in which chemical kinetics,
+\VirtualReactor{} follows a modular architecture in which chemical kinetics,
 reactor physics, thermophysical properties, numerical integration, and data
 management are represented by separate software components.
 
@@ -128,7 +128,7 @@ that equilibrium.
 
 \subsubsection{Initialization}
 
-The reaction network can be initialized in \textsc{VirtualReactor} using the
+The reaction network can be initialized in \VirtualReactor{} using the
 \texttt{Mechanism} class:
 
 \begin{verbatim}
@@ -474,7 +474,7 @@ models, operating conditions, or physical property models while keeping the
 chemical mechanism unchanged.
 
 
-\subsubsection{Simulation Results}
+\section{Simulation Results}
 
 The \texttt{solve()} method performs the numerical integration and returns
 a \texttt{SimulationResult} object,
@@ -536,41 +536,13 @@ simulation data to be analyzed, plotted, compared, and stored independently
 of the numerical integration itself.
 
 
-\subsubsection{Serialization}
+\section{Serialization}
 
-Simulation results can be serialized for persistent storage and subsequent
-analysis. \textsc{VirtualReactor} uses the HDF5 format to store simulation
-data together with the information required to describe the corresponding
-simulation.
+Simulation results can be serialized to HDF5 for persistent storage and
+subsequent analysis. The file contains the numerical solution together with
+metadata required to interpret the stored reactor state.
 
-A result can be written to an HDF5 file using
-
-\begin{verbatim}
-result.save_hdf5(
-    "data/raw/pfr_simulation.h5"
-)
-\end{verbatim}
-
-Serialization converts the in-memory representation of a
-\texttt{SimulationResult} into a persistent file representation,
-
-\begin{equation}
-    \texttt{SimulationResult}
-    \xrightarrow{\;\texttt{save\_hdf5()}\;}
-    \texttt{HDF5 file}.
-\end{equation}
-
-The HDF5 format is particularly suitable for numerical simulation data because
-it can efficiently store multidimensional numerical arrays together with
-structured metadata. This allows simulation results to be retained in a
-reproducible and machine-readable form and provides a basis for systematic
-parameter studies and the generation of larger simulation datasets.
-
-
-\subsubsection{Serialization}
-
-A \texttt{SimulationResult} exists initially as a Python object in memory.
-For persistent storage, the result can be serialized into an HDF5 file using
+A \texttt{SimulationResult} can be stored using
 
 \begin{verbatim}
 result.save_hdf5(
@@ -578,9 +550,7 @@ result.save_hdf5(
 )
 \end{verbatim}
 
-The resulting file preserves both the numerical solution and the information
-required to interpret the stored state. Its hierarchical structure can be
-represented as
+The resulting HDF5 file has the following structure:
 
 \begin{verbatim}
 simulation.h5
@@ -598,17 +568,18 @@ simulation.h5
     +-- message
 \end{verbatim}
 
-The \texttt{coordinates} dataset contains the values of the independent
-simulation coordinate $\xi$. The \texttt{states} dataset contains the
-corresponding reactor states $\mathbf{y}(\xi)$, while \texttt{species}
-stores the associated species names.
+The \texttt{coordinates} dataset contains the independent simulation
+coordinate $\xi$, while \texttt{states} contains the corresponding reactor
+states $\mathbf{y}(\xi)$. The \texttt{species} dataset stores the associated
+species names.
 
-Additional information is stored as HDF5 attributes. In particular,
-\texttt{coordinate\_name} identifies the independent coordinate, such as
-time or reactor volume, and \texttt{species\_state\_name} identifies whether
-the species states represent concentrations or molar flow rates.
+The HDF5 attributes provide additional information required to interpret the
+result. In particular, \texttt{coordinate\_name} identifies the independent
+coordinate, such as time or reactor volume, and
+\texttt{species\_state\_name} identifies the representation of the species
+states, such as concentrations or molar flow rates.
 
-A serialized result can subsequently be reconstructed using
+A stored result can be reconstructed using
 
 \begin{verbatim}
 result = vr.SimulationResult.load_hdf5(

@@ -1,7 +1,11 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "virtual-reactor"
 version = "0.1.0"
-description = "A Python library for modeling and simulating chemical reactors."
+description = "A modular Python framework for modeling and simulating chemical reactors."
 readme = "README.md"
 requires-python = ">=3.12"
 
@@ -12,6 +16,11 @@ dependencies = [
     "pandas",
     "pint",
     "h5py",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
 ]
 
 [tool.setuptools.packages.find]

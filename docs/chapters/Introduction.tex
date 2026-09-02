@@ -2,9 +2,53 @@
 
 \section{Overview}
 
+\VirtualReactor{} is a modular Python framework for the mechanistic simulation
+of chemical reactors. Reaction kinetics, reactor models, thermophysical
+properties, and numerical integration are implemented as independent
+components that can be combined within a common simulation framework.
+
+The current implementation supports batch and plug-flow reactors, reversible
+reaction networks, non-isothermal operation, and HDF5-based storage of
+simulation results.
+
+
 \section{Motivation}
+
+Chemical reactor models couple reaction kinetics with reactor-specific mass
+and energy balances. Implementing both within a single model limits the
+reusability of reaction mechanisms and complicates systematic variation of
+reactor configurations and operating conditions.
+
+\VirtualReactor{} separates the chemical reaction model from the reactor
+description. This enables the same reaction mechanism to be evaluated in
+different reactor configurations and provides a common basis for systematic
+parameter studies and optimization.
+
 
 \section{Design Philosophy}
 
+The framework follows a modular object-oriented design. A
+\texttt{Mechanism} describes reaction kinetics and thermodynamics, while
+reactor-specific behavior and thermophysical properties are represented by
+independent models. The \texttt{Simulation} class combines these components
+and performs the numerical integration.
+
+Simulation output is represented independently by
+\texttt{SimulationResult}, allowing numerical results to be analyzed and
+stored without dependence on the simulation procedure.
+
+
 \section{Scope}
+
+The current version focuses on deterministic simulations of homogeneous
+chemical reaction networks in batch and steady-state plug-flow reactors.
+Temperature-dependent kinetics, reversible reactions, reaction heat, and
+external heat transfer are supported.
+
+Detailed fluid dynamics, multiphase systems, and spatially resolved transport
+are outside the current scope.
+
+Future development will extend the framework toward systematic data
+generation and data-driven reactor optimization, including Bayesian
+optimization of operating conditions and reactor parameters.
 
