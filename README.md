@@ -181,7 +181,7 @@ More detailed examples, including plug-flow reactor simulations and reversible r
 Clone the repository and install VirtualReactor in editable mode:
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/Eric-Liberra/VirtualReactor.git
 cd VirtualReactor
 pip install -e .
 ```
