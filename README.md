@@ -163,6 +163,8 @@ result = simulation.solve(
     initial_state=initial_state,
     xi_span=(0.0, 10.0),
 )
+
+result.plot_species_vs_coordinate()
 ```
 
 The same reaction mechanism can be combined with different reactor models without redefining the chemistry. This modularity is a central design principle of VirtualReactor.
